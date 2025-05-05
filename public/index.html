@@ -1,0 +1,1841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Voice AI Agent Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+        header {
+            background-color: #3a0ca3;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            grid-column: 1 / -1;
+        }
+        h1, h2, h3 {
+            margin: 0;
+        }
+        .controls {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        button {
+            background-color: #4361ee;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #3a0ca3;
+        }
+        button.recording {
+            background-color: #e71d36;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .transcript-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+        }
+        .transcript-message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #e9ecef;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .agent-message {
+            background-color: #4361ee;
+            color: white;
+        }
+        .cart-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .cart-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .cart-items {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        .cart-item-details {
+            flex-grow: 1;
+        }
+        .cart-item-title {
+            font-weight: bold;
+        }
+        .cart-item-customization {
+            font-size: 0.85em;
+            color: #666;
+        }
+        .cart-item-price {
+            font-weight: bold;
+            min-width: 70px;
+            text-align: right;
+        }
+        .cart-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 15px 0;
+            border-top: 2px solid #e9ecef;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .microphone-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background-color: #cccccc;
+            margin-right: 10px;
+        }
+        .microphone-indicator.active {
+            background-color: #e71d36;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+        .flex {
+            display: flex;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Restaurant Voice AI Agent Demo</h1>
+        <p>Powered by Deepgram Agent API</p>
+    </header>
+    
+    <div class="container">
+        <div class="main-content">
+            <div class="controls">
+                <div class="flex">
+                    <div id="microphoneIndicator" class="microphone-indicator"></div>
+                    <button id="startButton" disabled>Start Conversation</button>
+                </div>
+                <span id="status" class="status">Connecting to server...</span>
+            </div>
+            
+            <div id="transcript" class="transcript-container">
+                <!-- Transcript messages will be added here -->
+                <div class="transcript-message agent-message">
+                    Welcome to our restaurant AI assistant! Click "Start Conversation" to begin your order.
+                </div>
+            </div>
+        </div>
+        
+        <div class="cart-section">
+            <div class="cart-container">
+                <div class="cart-title">
+                    <h2>Your Order</h2>
+                    <span id="itemCount">0 items</span>
+                </div>
+                
+                <div id="cartItems" class="cart-items">
+                    <!-- Cart items will be added here -->
+                </div>
+                
+                <div id="cartTotal" class="cart-total">
+                    <span>Total:</span>
+                    <span>$0.00</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restaurant data -->
+    <script src="restaurant-data.js"></script>
+    
+    <script>
+        // DOM elements
+        const transcript = document.getElementById('transcript');
+        const startButton = document.getElementById('startButton');
+        const statusElement = document.getElementById('status');
+        const microphoneIndicator = document.getElementById('microphoneIndicator');
+        const cartItemsElement = document.getElementById('cartItems');
+        const cartTotalElement = document.getElementById('cartTotal');
+        const itemCountElement = document.getElementById('itemCount');
+        
+        // State variables
+        let isConversationActive = false;
+        let webSocket = null;
+        let audioContext = null;
+        let microphoneStream = null;
+        let processor = null;
+        let audioChunks = [];
+        let audioPlayer = new Audio();
+        let cart = [];
+        let totalPrice = 0;
+        let startTimeRef = { current: 0 };
+        let scheduledAudioSources = [];
+        let processingFunction = false;
+
+        // Enable console debugging
+        const DEBUG = true;
+        
+        function debugLog(message, data) {
+            if (DEBUG) {
+                if (data) {
+                    console.log(`[CLIENT] ${message}`, data);
+                } else {
+                    console.log(`[CLIENT] ${message}`);
+                }
+            }
+        }
+        
+        const styleElement = document.createElement('style');
+        styleElement.textContent = `
+            .order-notification {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%) translateY(100px);
+                background-color: #4361ee;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                opacity: 0;
+                transition: transform 0.3s ease, opacity 0.3s ease;
+                z-index: 1000;
+            }
+            
+            .order-notification.show {
+                transform: translateX(-50%) translateY(0);
+                opacity: 1;
+            }
+            
+            .order-notification.added {
+                background-color: #4361ee;
+            }
+            
+            .order-notification.removed {
+                background-color: #e71d36;
+            }
+            
+            .order-notification.modified {
+                background-color: #ff9500;
+            }
+            
+            .order-notification.cleared {
+                background-color: #e71d36;
+            }
+            
+            .notification-icon {
+                font-size: 20px;
+                margin-right: 12px;
+            }
+            
+            .notification-text {
+                font-weight: 500;
+            }
+            
+            .cart-container.highlight {
+                animation: pulse-highlight 1.5s ease-in-out;
+            }
+            
+            @keyframes pulse-highlight {
+                0% { box-shadow: 0 0 0 0 rgba(67, 97, 238, 0.7); }
+                50% { box-shadow: 0 0 0 10px rgba(67, 97, 238, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(67, 97, 238, 0); }
+            }
+            
+            /* Add some interactive hover effect for cart items */
+            .cart-item {
+                transition: background-color 0.2s ease;
+            }
+            
+            .cart-item:hover {
+                background-color: #f5f7fa;
+            }
+            
+            /* Make the add/remove buttons more visible */
+            .cart-item-quantity {
+                display: flex;
+                align-items: center;
+            }
+            
+            .quantity-btn {
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                background-color: #f1f1f1;
+                border: none;
+                font-weight: bold;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 5px;
+            }
+            
+            .quantity-btn:hover {
+                background-color: #e0e0e0;
+            }
+        `;
+
+        // Add the styles to the document
+        document.head.appendChild(styleElement);
+
+        // Connect to WebSocket server
+        function connectToServer() {
+            // Use secure WebSocket if page is served over HTTPS
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}`;
+            
+            webSocket = new WebSocket(wsUrl);
+            
+            webSocket.onopen = () => {
+                console.log('Connected to WebSocket server');
+                updateStatus('Connected. Ready to initialize agent...');
+                initializeAgent();
+            };
+            
+            webSocket.onclose = () => {
+                console.log('Disconnected from WebSocket server');
+                updateStatus('Disconnected. Refresh page to reconnect.');
+                startButton.disabled = true;
+                isConversationActive = false;
+            };
+            
+            webSocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection error. See console for details.');
+            };
+            
+            webSocket.onmessage = handleServerMessage;
+        }
+        
+        // Add item to cart
+        function addToCart(item) {
+            debugLog(`Adding to cart: ${item.name}`, item);
+            
+            // Add item to cart
+            cart.push(item);
+            totalPrice += item.totalPrice;
+            
+            // Update UI
+            updateCartUI();
+        }
+        
+        // Remove item from cart
+        function removeFromCart(itemId) {
+            debugLog(`Removing from cart: ${itemId}`);
+            
+            const index = cart.findIndex(item => item.id === itemId);
+            
+            if (index !== -1) {
+                // Subtract price from total
+                totalPrice -= cart[index].totalPrice;
+                
+                // Remove item
+                cart.splice(index, 1);
+                
+                // Update UI
+                updateCartUI();
+            }
+        }
+        
+        // Update cart UI
+        function updateCartUI() {
+            // Clear cart items
+            cartItemsElement.innerHTML = '';
+            
+            // Add each item
+            cart.forEach(item => {
+                const cartItemElement = document.createElement('div');
+                cartItemElement.classList.add('cart-item');
+                
+                const quantityText = item.quantity > 1 ? `${item.quantity}x ` : '';
+                
+                cartItemElement.innerHTML = `
+                    <div class="cart-item-details">
+                        <div class="cart-item-title">${quantityText}${item.name}</div>
+                        ${item.size ? `<div class="cart-item-customization">${item.size}</div>` : ''}
+                        ${item.customizations && item.customizations.length > 0 ? 
+                            `<div class="cart-item-customization">${item.customizations.join(', ')}</div>` : ''}
+                    </div>
+                    <div class="cart-item-price">$${item.totalPrice.toFixed(2)}</div>
+                `;
+                
+                cartItemsElement.appendChild(cartItemElement);
+            });
+            
+            // Update total
+            cartTotalElement.innerHTML = `
+                <span>Total:</span>
+                <span>$${totalPrice.toFixed(2)}</span>
+            `;
+            
+            // Update item count
+            const totalItems = cart.reduce((total, item) => total + (item.quantity || 1), 0);
+            itemCountElement.textContent = `${totalItems} item${totalItems !== 1 ? 's' : ''}`;
+            
+            debugLog(`Cart updated: ${totalItems} items, total: $${totalPrice.toFixed(2)}`);
+        }
+        
+        // Add functions to increase/decrease item quantity
+        function increaseItemQuantity(itemId) {
+            const index = cart.findIndex(item => item.id === itemId);
+            if (index !== -1) {
+                const currentPrice = cart[index].totalPrice / cart[index].quantity;
+                cart[index].quantity += 1;
+                cart[index].totalPrice = currentPrice * cart[index].quantity;
+                totalPrice += currentPrice;
+                updateCartUI();
+            }
+        }
+        
+        function decreaseItemQuantity(itemId) {
+            const index = cart.findIndex(item => item.id === itemId);
+            if (index !== -1 && cart[index].quantity > 1) {
+                const currentPrice = cart[index].totalPrice / cart[index].quantity;
+                cart[index].quantity -= 1;
+                cart[index].totalPrice = currentPrice * cart[index].quantity;
+                totalPrice -= currentPrice;
+                updateCartUI();
+            } else if (index !== -1 && cart[index].quantity === 1) {
+                // If quantity would become 0, remove the item
+                removeFromCart(itemId);
+            }
+        }
+        
+        // Function to add checkout capability
+        function addCheckoutButton() {
+            const checkoutButton = document.createElement('button');
+            checkoutButton.id = 'checkoutButton';
+            checkoutButton.classList.add('checkout-btn');
+            checkoutButton.textContent = 'Proceed to Checkout';
+            checkoutButton.onclick = startCheckout;
+            
+            // Add button after cart total
+            cartTotalElement.parentNode.insertBefore(checkoutButton, cartTotalElement.nextSibling);
+            
+            // Add CSS for the button
+            const buttonStyle = document.createElement('style');
+            buttonStyle.textContent = `
+                .checkout-btn {
+                    background-color: #4361ee;
+                    color: white;
+                    border: none;
+                    padding: 12px 20px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 16px;
+                    width: 100%;
+                    margin-top: 15px;
+                    transition: background-color 0.3s;
+                }
+                
+                .checkout-btn:hover {
+                    background-color: #3a0ca3;
+                }
+                
+                .checkout-btn:disabled {
+                    background-color: #cccccc;
+                    cursor: not-allowed;
+                }
+            `;
+            document.head.appendChild(buttonStyle);
+        }
+        
+        // Checkout function
+        function startCheckout() {
+            if (cart.length === 0) {
+                alert('Your cart is empty. Add some items before checkout.');
+                return;
+            }
+            
+            // Create a confirmation modal
+            const modal = document.createElement('div');
+            modal.classList.add('checkout-modal');
+            
+            const modalContent = document.createElement('div');
+            modalContent.classList.add('modal-content');
+            
+            // Build order summary
+            let orderSummary = '<h2>Order Summary</h2>';
+            orderSummary += '<div class="order-items">';
+            
+            cart.forEach(item => {
+                const sizeTxt = item.size ? `${item.size} ` : '';
+                const customizationsTxt = item.customizations && item.customizations.length > 0 
+                    ? ` with ${item.customizations.join(', ')}` 
+                    : '';
+                    
+                orderSummary += `
+                    <div class="order-item">
+                        <div class="order-item-details">
+                            <span class="order-item-quantity">${item.quantity}x</span>
+                            <span class="order-item-name">${sizeTxt}${item.name}${customizationsTxt}</span>
+                        </div>
+                        <div class="order-item-price">$${item.totalPrice.toFixed(2)}</div>
+                    </div>
+                `;
+            });
+            
+            orderSummary += '</div>';
+            
+            // Add delivery info if applicable
+            if (restaurantData.delivery) {
+                orderSummary += `
+                    <div class="delivery-info">
+                        <div class="delivery-row">
+                            <span>Subtotal:</span>
+                            <span>$${totalPrice.toFixed(2)}</span>
+                        </div>
+                        <div class="delivery-row">
+                            <span>Delivery Fee:</span>
+                            <span>$${restaurantData.delivery.fee.toFixed(2)}</span>
+                        </div>
+                        <div class="delivery-row total">
+                            <span>Total:</span>
+                            <span>$${(totalPrice + restaurantData.delivery.fee).toFixed(2)}</span>
+                        </div>
+                        <div class="delivery-note">
+                            Estimated delivery time: ${restaurantData.delivery.estimatedTime}
+                        </div>
+                    </div>
+                `;
+            } else {
+                orderSummary += `
+                    <div class="order-total">
+                        <span>Total:</span>
+                        <span>$${totalPrice.toFixed(2)}</span>
+                    </div>
+                `;
+            }
+            
+            // Add checkout form
+            const checkoutForm = `
+                <div class="checkout-form">
+                    <h3>Delivery Information</h3>
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" placeholder="Your Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="phone">Phone</label>
+                        <input type="tel" id="phone" placeholder="Phone Number">
+                    </div>
+                    <div class="form-group">
+                        <label for="address">Address</label>
+                        <input type="text" id="address" placeholder="Delivery Address">
+                    </div>
+                    <div class="form-buttons">
+                        <button id="cancelCheckout" class="cancel-btn">Cancel</button>
+                        <button id="confirmOrder" class="confirm-btn">Confirm Order</button>
+                    </div>
+                </div>
+            `;
+            
+            modalContent.innerHTML = orderSummary + checkoutForm;
+            modal.appendChild(modalContent);
+            
+            // Add modal styles
+            const modalStyles = document.createElement('style');
+            modalStyles.textContent = `
+                .checkout-modal {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0,0,0,0.5);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                }
+                
+                .modal-content {
+                    background-color: white;
+                    padding: 30px;
+                    border-radius: 8px;
+                    width: 500px;
+                    max-width: 90%;
+                    max-height: 90%;
+                    overflow-y: auto;
+                }
+                
+                .order-items {
+                    margin: 20px 0;
+                }
+                
+                .order-item {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 10px 0;
+                    border-bottom: 1px solid #f1f1f1;
+                }
+                
+                .order-item-quantity {
+                    margin-right: 8px;
+                    font-weight: bold;
+                }
+                
+                .delivery-info {
+                    margin-top: 20px;
+                    padding-top: 15px;
+                    border-top: 2px solid #e9ecef;
+                }
+                
+                .delivery-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }
+                
+                .delivery-row.total {
+                    font-weight: bold;
+                    font-size: 1.2em;
+                    margin-top: 10px;
+                    padding-top: 10px;
+                    border-top: 1px solid #e9ecef;
+                }
+                
+                .delivery-note {
+                    font-style: italic;
+                    color: #666;
+                    margin-top: 10px;
+                }
+                
+                .checkout-form {
+                    margin-top: 30px;
+                }
+                
+                .form-group {
+                    margin-bottom: 15px;
+                }
+                
+                .form-group label {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: 500;
+                }
+                
+                .form-group input {
+                    width: 100%;
+                    padding: 10px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                }
+                
+                .form-buttons {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 25px;
+                }
+                
+                .cancel-btn {
+                    background-color: #f1f1f1;
+                    color: #333;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+                
+                .confirm-btn {
+                    background-color: #4361ee;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+            `;
+            document.head.appendChild(modalStyles);
+            
+            // Add to page
+            document.body.appendChild(modal);
+            
+            // Set up event listeners
+            document.getElementById('cancelCheckout').addEventListener('click', () => {
+                document.body.removeChild(modal);
+            });
+            
+            document.getElementById('confirmOrder').addEventListener('click', () => {
+                // Get form values
+                const name = document.getElementById('name').value;
+                const phone = document.getElementById('phone').value;
+                const address = document.getElementById('address').value;
+                
+                // Basic validation
+                if (!name || !phone || !address) {
+                    alert('Please fill out all fields');
+                    return;
+                }
+                
+                // Here you would normally send the order to your server
+                // For this demo, we'll just show a confirmation
+                
+                // Clear cart
+                cart = [];
+                totalPrice = 0;
+                updateCartUI();
+                
+                // Replace modal content with confirmation
+                modalContent.innerHTML = `
+                    <div class="order-confirmation">
+                        <div class="confirmation-icon">✓</div>
+                        <h2>Order Confirmed!</h2>
+                        <p>Thank you for your order, ${name}.</p>
+                        <p>We'll deliver to ${address} within ${restaurantData.delivery.estimatedTime}.</p>
+                        <p>A confirmation has been sent to your phone at ${phone}.</p>
+                        <button id="closeConfirmation" class="confirm-btn">Close</button>
+                    </div>
+                `;
+                
+                // Add confirmation styles
+                const confirmationStyles = document.createElement('style');
+                confirmationStyles.textContent = `
+                    .order-confirmation {
+                        text-align: center;
+                        padding: 20px 0;
+                    }
+                    
+                    .confirmation-icon {
+                        font-size: 60px;
+                        color: #4CAF50;
+                        margin-bottom: 20px;
+                    }
+                `;
+                document.head.appendChild(confirmationStyles);
+                
+                // Set up close button
+                document.getElementById('closeConfirmation').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+            });
+        }
+        
+        // Call the function to add the checkout button
+        document.addEventListener('DOMContentLoaded', function() {
+            addCheckoutButton();
+        });
+        
+        // Initialize the Deepgram Agent
+        function initializeAgent() {
+            if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                updateStatus('Initializing Deepgram Agent...');
+                
+                // Disable the button during initialization
+                startButton.disabled = true;
+                
+                webSocket.send(JSON.stringify({
+                    type: 'init'
+                }));
+            } else {
+                updateStatus('WebSocket not connected. Refresh the page.');
+            }
+        }
+        
+        // Handle messages from the server
+        function handleServerMessage(event) {
+            // Check if the message is binary (audio) or text (JSON)
+            if (event.data instanceof Blob) {
+                // Binary data - agent audio response
+                playAudioResponse(event.data);
+            } else {
+                // Text data - parse as JSON
+                try {
+                    const message = JSON.parse(event.data);
+                    
+                    switch (message.type) {
+                        case 'status':
+                            handleStatusMessage(message);
+                            break;
+                        case 'transcript':
+                            handleTranscriptMessage(message);
+                            break;
+                        case 'actions':
+                            handleActionMessage(message);
+                            break;
+                        case 'error':
+                            handleErrorMessage(message);
+                            break;
+                        case 'audioComplete':
+                            // Agent finished speaking
+                            break;
+                        case 'userStartedSpeaking':
+                            // User started speaking - stop all audio playback
+                            // This event comes directly from Deepgram's voice detection
+                            stopAllAudio();
+                            break;
+                        default:
+                            console.log('Unknown message type:', message.type);
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                }
+            }
+        }
+        
+        function stopAllAudio() {
+            console.log("User interrupted - stopping audio playback");
+            
+            // Stop all scheduled audio sources
+            if (scheduledAudioSources && scheduledAudioSources.length > 0) {
+                scheduledAudioSources.forEach(source => {
+                    try {
+                        if (source) {
+                            source.stop();
+                        }
+                    } catch (err) {
+                        // Ignore errors if source is already stopped
+                    }
+                });
+                
+                // Clear the sources array
+                scheduledAudioSources = [];
+            }
+            
+            // Reset the start time reference
+            startTimeRef.current = 0;
+        }
+
+        // Handle status messages
+        function handleStatusMessage(message) {
+            console.log('Status message:', message);
+            
+            if (message.message) {
+                updateStatus(message.message);
+            }
+            
+            if (message.status === 'ready') {
+                startButton.disabled = false;
+            } else if (message.status === 'closed') {
+                stopRecording();
+                startButton.disabled = true;
+            } else if (message.status === 'not_ready') {
+                // Agent not ready, stop recording if it was started
+                if (isConversationActive) {
+                    stopRecording();
+                }
+            }
+        }
+        
+        // Handle transcript messages
+        function handleTranscriptMessage(message) {
+            console.log('Transcript:', message.data);
+            
+            // Check if this is user or agent transcript
+            if (message.data.speaker === 'user') {
+                addMessageToTranscript({
+                    speaker: 'user',
+                    text: message.data.text
+                });
+            } else if (message.data.speaker === 'agent') {
+                addMessageToTranscript({
+                    speaker: 'agent',
+                    text: message.data.text
+                });
+            } else if (message.data.role === 'user') {
+                addMessageToTranscript({
+                    speaker: 'user',
+                    text: message.data.content
+                });
+            } else if (message.data.role === 'assistant') {
+                addMessageToTranscript({
+                    speaker: 'agent',
+                    text: message.data.content
+                });
+            }
+        }
+        
+        /**
+        * Handle action messages from the server
+        * These are generated by function calls from the voice agent
+        */
+        function handleActionMessage(message) {
+            console.log('Action message received:', message);
+            
+            const function_call_id = message.function_call_id;
+            const function_name = message.function_name;
+            let result = null;
+            
+            if (!message.actions || !Array.isArray(message.actions) || message.actions.length === 0) {
+                console.error('Invalid action message format');
+                return;
+            }
+            
+            // Process each action
+            message.actions.forEach(action => {
+                console.log('Processing action:', action);
+                
+                // Capture function_call_id if present (sent by Deepgram)
+                const function_call_id = action.function_call_id;
+                const function_name = action.function_name;
+                let result = null;
+                
+                try {
+                    switch (action.type) {
+                        case 'add_to_cart':
+                            result = handleAddToCartAction(action);
+                            break;
+                            
+                        case 'modify_cart_item':
+                            result = handleModifyCartItemAction(action);
+                            break;
+                            
+                        case 'remove_from_cart':
+                            result = handleRemoveFromCartAction(action);
+                            break;
+                            
+                        case 'clear_cart':
+                            result = handleClearCartAction();
+                            break;
+                            
+                        case 'checkout':
+                            result = handleCheckoutAction(action);
+                            break;
+                        
+                        case 'update_customer_phone_number':
+                            result = handleCustomerPhone(action);
+                            break;
+                        
+                        case 'update_customer_address':
+                            result = handleCustomerAddress(action);
+                            break;
+
+                        case 'update_customer_name':
+                            result = handleCustomerName(action);
+                            break;
+                            
+                        default:
+                            console.warn('Unknown action type:', action.type);
+                    }
+                    
+                    // Send response back to server if function_call_id is present
+                    if (function_call_id) {
+                        sendActionResponse(function_call_id, result || { success: true }, function_name);
+                    }
+                } catch (error) {
+                    console.error('Error processing action:', error);
+                    
+                    // Send error response if function_call_id is present
+                    if (function_call_id) {
+                        sendActionResponse(function_call_id, { 
+                            success: false, 
+                            error: error.message || 'Unknown error' 
+                        });
+                    }
+                }
+            });
+        }
+        
+        function ensureListeningActive() {
+            if (!processingFunction && isConversationActive && !microphoneStream) {
+                console.log('Restarting listening...');
+                startRecording();
+            }
+        }
+
+        /**
+        * Send action response back to the server
+        * @param {string} function_call_id - The ID of the function call
+        * @param {Object} output - The result of the action
+        */
+        function sendActionResponse(function_call_id, output, functionName) {
+            if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+                console.error('WebSocket not connected, cannot send action response');
+                return;
+            }
+            console.log(function_call_id, output, functionName)
+            try {
+                processingFunction = true;
+                
+                const response = {
+                    type: 'action_response',
+                    function_call_id: function_call_id,
+                    function_name: functionName,
+                    "response": {
+                        "confirmation": "request processed"
+                    }
+                };
+                
+                console.log('Sending action response:', response);
+                webSocket.send(JSON.stringify(response));
+                
+                // Add a short delay and then ensure listening is active
+                setTimeout(() => {
+                    processingFunction = false;
+                    ensureListeningActive();
+                }, 500);
+            } catch (error) {
+                console.error('Error sending action response:', error);
+                processingFunction = false;
+            }
+        }
+
+        /**
+        * Handle add to cart action
+        * @returns {Object} Result of the action
+        */
+        function handleAddToCartAction(action) {
+            console.log('Adding to cart:', action);
+            
+            // Find the menu item in our data
+            const item = findMenuItem(action.item || action.name, window.restaurantData);
+            
+            if (!item) {
+                console.error('Item not found:', action.item || action.name);
+                return { success: false, error: `Item "${action.item || action.name}" not found` };
+            }
+            
+            // Create the cart item
+            const cartItem = {
+                id: action.id || item.id || `item_${Date.now()}`,
+                name: item.name,
+                price: item.price,
+                description: item.description,
+                quantity: action.quantity || 1,
+                size: action.size || null,
+                customizations: action.customizations || []
+            };
+            
+            // Calculate the total price
+            cartItem.totalPrice = calculateItemPrice(cartItem);
+            
+            // Add to cart
+            addToCart(cartItem);
+            
+            // Show visual confirmation
+            showOrderConfirmation(cartItem);
+            
+            // Return success result
+            return { 
+                success: true, 
+                item: {
+                    id: cartItem.id,
+                    name: cartItem.name,
+                    price: cartItem.price,
+                    quantity: cartItem.quantity,
+                    size: cartItem.size,
+                    customizations: cartItem.customizations,
+                    totalPrice: cartItem.totalPrice
+                }
+            };
+        }
+
+        /**
+        * Handle modify cart item action
+        * @returns {Object} Result of the action
+        */
+        function handleModifyCartItemAction(action) {
+            console.log('Modifying cart item:', action);
+            
+            if (!action.item) {
+                console.error('No item specified for modification');
+                return { success: false, error: 'No item specified for modification' };
+            }
+            
+            // Find the item in the cart by name
+            const itemIndex = cart.findIndex(item => 
+                item.name && item.name.toLowerCase() === action.item.toLowerCase());
+            
+            if (itemIndex === -1) {
+                console.error('Item not found in cart:', action.item);
+                return { success: false, error: `Item "${action.item}" not found in cart` };
+            }
+            
+            const cartItem = cart[itemIndex];
+            const oldTotalPrice = cartItem.totalPrice;
+            
+            // Apply changes
+            if (action.changes) {
+                if (action.changes.quantity !== undefined) {
+                    cartItem.quantity = action.changes.quantity;
+                }
+                
+                if (action.changes.size !== undefined) {
+                    cartItem.size = action.changes.size;
+                }
+                
+                if (action.changes.customizations !== undefined) {
+                    cartItem.customizations = action.changes.customizations;
+                }
+            }
+            
+            // Recalculate price
+            cartItem.totalPrice = calculateItemPrice(cartItem);
+            
+            // Update total price
+            totalPrice = totalPrice - oldTotalPrice + cartItem.totalPrice;
+            
+            // Update cart UI
+            updateCartUI();
+            
+            // Show confirmation
+            showModificationConfirmation(cartItem);
+            
+            // Return success result
+            return { 
+                success: true, 
+                item: {
+                    id: cartItem.id,
+                    name: cartItem.name,
+                    changes: action.changes,
+                    totalPrice: cartItem.totalPrice
+                }
+            };
+        }
+
+        /**
+        * Handle remove from cart action
+        * @returns {Object} Result of the action
+        */
+        function handleRemoveFromCartAction(action) {
+            console.log('Removing from cart:', action);
+            
+            if (!action.item) {
+                console.error('No item specified for removal');
+                return { success: false, error: 'No item specified for removal' };
+            }
+            
+            // Find the item in the cart by name
+            const itemIndex = cart.findIndex(item => 
+                item.name && item.name.toLowerCase() === action.item.toLowerCase());
+            
+            if (itemIndex === -1) {
+                console.error('Item not found in cart:', action.item);
+                return { success: false, error: `Item "${action.item}" not found in cart` };
+            }
+            
+            const cartItem = cart[itemIndex];
+            
+            // Remove from cart
+            removeFromCart(cartItem.id);
+            
+            // Show confirmation
+            showRemovalConfirmation(cartItem);
+            
+            // Return success result
+            return { 
+                success: true, 
+                item: {
+                    name: cartItem.name,
+                    id: cartItem.id
+                }
+            };
+        }
+
+        /**
+        * Handle clear cart action
+        * @returns {Object} Result of the action
+        */
+        function handleClearCartAction() {
+            console.log('Clearing cart');
+            
+            // Get cart size before clearing
+            const itemCount = cart.length;
+            
+            // Clear the cart
+            clearCart();
+            
+            // Show confirmation
+            showClearCartConfirmation();
+            
+            // Return success result
+            return { 
+                success: true, 
+                itemsRemoved: itemCount
+            };
+        }
+
+        /**
+        * Show a visual confirmation for clearing the cart
+        */
+        function showClearCartConfirmation() {
+            // Create a notification element
+            const notification = document.createElement('div');
+            notification.classList.add('order-notification');
+            notification.classList.add('cleared');
+            
+            notification.innerHTML = `
+                <div class="notification-icon">✓</div>
+                <div class="notification-text">
+                    Your cart has been cleared
+                </div>
+            `;
+            
+            // Add to the page
+            document.body.appendChild(notification);
+            
+            // Animate in, then remove after a delay
+            setTimeout(() => {
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 2000);
+            }, 10);
+            
+            // Highlight the cart section
+            highlightCartSection();
+        }
+
+        /**
+        * Highlight the cart section to draw attention
+        */
+        function highlightCartSection() {
+            const cartContainer = document.querySelector('.cart-container');
+            if (cartContainer) {
+                cartContainer.classList.add('highlight');
+                
+                setTimeout(() => {
+                    cartContainer.classList.remove('highlight');
+                }, 1500);
+            }
+        }
+
+        function handleCustomerName(action){
+            console.log('Updating customer name:', action);
+            const name = document.getElementById('name').value;
+            return { 
+                success: true
+            };
+    
+        }
+
+        function handleCustomerAddress(action){
+            console.log('Updating customer address:', action);
+            const address = document.getElementById('address').value;
+            return { 
+                success: true
+            };
+        }
+
+        function handleCustomerPhone(action){
+            console.log('Updating customer phone:', action);
+            const phone = document.getElementById('phone').value;
+            return { 
+                success: true
+            };
+        }
+
+        /**
+        * Handle checkout action
+        */
+        function handleCheckoutAction(action) {
+            console.log('Starting checkout:', action);
+            
+            // Start checkout with provided parameters
+            const result = startCheckout(action.delivery, action.address, action.phone);
+            
+            // Return result
+            return result || { success: true };
+        }
+
+        /**
+        * Show a visual confirmation for added items
+        */
+        function showOrderConfirmation(item) {
+            // Create a notification element
+            const notification = document.createElement('div');
+            notification.classList.add('order-notification');
+            notification.classList.add('added');
+            
+            // Format the item details
+            const sizeTxt = item.size ? `${item.size} ` : '';
+            const customizationsTxt = item.customizations && item.customizations.length > 0 
+                ? ` with ${item.customizations.join(', ')}` 
+                : '';
+            
+            notification.innerHTML = `
+                <div class="notification-icon">✓</div>
+                <div class="notification-text">
+                    Added ${item.quantity}x ${sizeTxt}${item.name}${customizationsTxt}
+                </div>
+            `;
+            
+            // Add to the page
+            document.body.appendChild(notification);
+            
+            // Animate in, then remove after a delay
+            setTimeout(() => {
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 2000);
+            }, 10);
+            
+            // Highlight the cart section
+            highlightCartSection();
+        }
+
+        /**
+        * Show a visual confirmation for removed items
+        */
+        function showRemovalConfirmation(item) {
+            // Create a notification element
+            const notification = document.createElement('div');
+            notification.classList.add('order-notification');
+            notification.classList.add('removed');
+            
+            notification.innerHTML = `
+                <div class="notification-icon">✓</div>
+                <div class="notification-text">
+                    Removed ${item.name} from your cart
+                </div>
+            `;
+            
+            // Add to the page
+            document.body.appendChild(notification);
+            
+            // Animate in, then remove after a delay
+            setTimeout(() => {
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 2000);
+            }, 10);
+            
+            // Highlight the cart section
+            highlightCartSection();
+        }
+
+        function highlightCartSection() {
+            const cartContainer = document.querySelector('.cart-container');
+            if (cartContainer) {
+                cartContainer.classList.add('highlight');
+                
+                setTimeout(() => {
+                    cartContainer.classList.remove('highlight');
+                }, 1500);
+            }
+        }
+        
+        /**
+        * Styles for notifications and highlights
+        */
+        function addNotificationStyles() {
+            const styleElement = document.createElement('style');
+            styleElement.textContent = `
+                .order-notification {
+                    position: fixed;
+                    bottom: 30px;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(100px);
+                    background-color: #4361ee;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    display: flex;
+                    align-items: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    opacity: 0;
+                    transition: transform 0.3s ease, opacity 0.3s ease;
+                    z-index: 1000;
+                }
+                
+                .order-notification.show {
+                    transform: translateX(-50%) translateY(0);
+                    opacity: 1;
+                }
+                
+                .order-notification.added {
+                    background-color: #4361ee;
+                }
+                
+                .order-notification.modified {
+                    background-color: #ff9500;
+                }
+                
+                .order-notification.removed {
+                    background-color: #e71d36;
+                }
+                
+                .order-notification.cleared {
+                    background-color: #e71d36;
+                }
+                
+                .notification-icon {
+                    font-size: 20px;
+                    margin-right: 12px;
+                }
+                
+                .notification-text {
+                    font-weight: 500;
+                }
+                
+                .cart-container.highlight {
+                    animation: pulse-highlight 1.5s ease-in-out;
+                }
+                
+                @keyframes pulse-highlight {
+                    0% { box-shadow: 0 0 0 0 rgba(67, 97, 238, 0.7); }
+                    50% { box-shadow: 0 0 0 10px rgba(67, 97, 238, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(67, 97, 238, 0); }
+                }
+            `;
+            
+            document.head.appendChild(styleElement);
+        }
+
+        /**
+        * Show a visual confirmation for modified items
+        */
+        function showModificationConfirmation(item) {
+            // Create a notification element
+            const notification = document.createElement('div');
+            notification.classList.add('order-notification');
+            notification.classList.add('modified');
+            
+            notification.innerHTML = `
+                <div class="notification-icon">✓</div>
+                <div class="notification-text">
+                    Updated ${item.name} in your cart
+                </div>
+            `;
+            
+            // Add to the page
+            document.body.appendChild(notification);
+            
+            // Animate in, then remove after a delay
+            setTimeout(() => {
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 2000);
+            }, 10);
+            
+            // Highlight the cart section
+            highlightCartSection();
+        }
+
+        function clearCart() {
+            cart = [];
+            totalPrice = 0;
+            updateCartUI();
+            
+            // Show confirmation
+            const notification = document.createElement('div');
+            notification.classList.add('order-notification');
+            notification.classList.add('cleared');
+            
+            notification.innerHTML = `
+                <div class="notification-icon">✓</div>
+                <div class="notification-text">
+                    Cart cleared
+                </div>
+            `;
+            
+            // Add to page
+            document.body.appendChild(notification);
+            
+            // Animate and remove after delay
+            setTimeout(() => {
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 2000);
+            }, 10);
+        }
+
+        /**
+        * Updated calculateItemPrice function
+        * @param {Object} item - Cart item
+        * @returns {number} - Total price
+        */
+        function calculateItemPrice(item) {
+            if (!item) return 0;
+            
+            let basePrice = item.price || 0;
+            
+            // Adjust for size if applicable
+            if (item.size && window.restaurantData && window.restaurantData.customizations && 
+                window.restaurantData.customizations.sizes) {
+                
+                const sizeData = window.restaurantData.customizations.sizes.find(
+                    s => s.name.toLowerCase() === item.size.toLowerCase());
+                
+                if (sizeData && sizeData.adjustmentFactor) {
+                    basePrice *= sizeData.adjustmentFactor;
+                }
+            }
+            
+            // Add cost for customizations
+            let additionalCost = 0;
+            
+            if (item.customizations && item.customizations.length > 0 && 
+                window.restaurantData && window.restaurantData.customizations &&
+                window.restaurantData.customizations.toppings) {
+                
+                for (const customization of item.customizations) {
+                    if (!customization) continue;
+                    
+                    // Handle cases where customization might be an object or a string
+                    const customizationName = typeof customization === 'string' ? 
+                        customization : (customization.name || '');
+                    
+                    const toppingData = window.restaurantData.customizations.toppings.find(
+                        t => t.name && t.name.toLowerCase() === customizationName.toLowerCase());
+                    
+                    if (toppingData && toppingData.price) {
+                        additionalCost += toppingData.price;
+                    }
+                }
+            }
+            
+            // Calculate total based on quantity
+            return parseFloat(((basePrice + additionalCost) * (item.quantity || 1)).toFixed(2));
+        }
+
+        // Handle error messages
+        function handleErrorMessage(message) {
+            console.error('Server error:', message.message);
+            updateStatus(`Error: ${message.message}`);
+            
+            addMessageToTranscript({
+                speaker: 'agent',
+                text: `I'm sorry, there was an error processing your request. Please try again.`
+            });
+        }
+        
+        function createAudioBuffer(data) {
+            if (!audioContext) {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // Convert ArrayBuffer to Int16Array (the format Deepgram uses)
+            const audioDataView = new Int16Array(data);
+            
+            if (audioDataView.length === 0) {
+              console.error("Received audio data is empty.");
+              return null;
+            }
+          
+            // Create buffer with correct sample rate (24000 for Deepgram output)
+            const buffer = audioContext.createBuffer(1, audioDataView.length, 24000);
+            const channelData = buffer.getChannelData(0);
+          
+            // Convert Int16 PCM to float [-1, 1]
+            for (let i = 0; i < audioDataView.length; i++) {
+              channelData[i] = audioDataView[i] / 32768;
+            }
+          
+            return buffer;
+          }
+
+        // Play audio response from agent
+        function playAudioResponse(audioBlob) {
+            //console.log("Received audio blob:", audioBlob.size, "bytes");
+            
+            // Convert blob to ArrayBuffer
+            audioBlob.arrayBuffer().then(arrayBuffer => {
+              // Create and play the audio buffer
+              const audioBuffer = createAudioBuffer(arrayBuffer);
+              if (audioBuffer) {
+                playAudioBuffer(audioBuffer);
+              }
+            }).catch(error => {
+              console.error("Error processing audio data:", error);
+            });
+          }
+        
+          function playAudioBuffer(buffer) {
+            if (!buffer) return null;
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+          
+            const currentTime = audioContext.currentTime;
+            if (startTimeRef.current < currentTime) {
+              startTimeRef.current = currentTime;
+            }
+          
+            source.start(startTimeRef.current);
+            startTimeRef.current += buffer.duration;
+            
+            //console.log("Audio scheduled to play, duration:", buffer.duration);
+            
+            // Keep track of source for possible cleanup
+            scheduledAudioSources.push(source);
+            
+            return source;
+          }
+
+        // Start button click handler
+        startButton.addEventListener('click', function() {
+            if (!isConversationActive) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+        
+        // Start recording
+        async function startRecording() {
+            try {
+                // First check if the Deepgram connection is ready
+                if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+                    updateStatus("Error: WebSocket not connected");
+                    return;
+                }
+                
+                // Disable the button while preparing
+                startButton.disabled = true;
+                updateStatus("Initializing microphone...");
+                
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                // Request microphone access
+                microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Create audio processing pipeline
+                const source = audioContext.createMediaStreamSource(microphoneStream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                
+                // Update UI
+                isConversationActive = true;
+                startButton.textContent = "Stop Listening";
+                startButton.classList.add('recording');
+                startButton.disabled = false;
+                microphoneIndicator.classList.add('active');
+                updateStatus("Listening...");
+                
+                // Process audio data
+                processor.onaudioprocess = (e) => {
+                    if (isConversationActive && webSocket && webSocket.readyState === WebSocket.OPEN) {
+                        // Get audio data from input channel
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        
+                        // Downsample to 16kHz
+                        const downsampledData = downsampleAudio(inputData, audioContext.sampleRate, 16000);
+                        
+                        // Convert to Int16 format for sending
+                        const convertedData = convertFloat32ToInt16(downsampledData);
+                        
+                        // Send to server
+                        webSocket.send(convertedData);
+                    }
+                };
+            } catch (error) {
+                console.error('Error starting recording:', error);
+                updateStatus(`Microphone error: ${error.message}`);
+                startButton.disabled = false;
+            }
+        }
+
+        function convertFloat32ToInt16(buffer) {
+            let l = buffer.length;
+            const buf = new Int16Array(l);
+            
+            while (l--) {
+                buf[l] = Math.min(1, buffer[l]) * 0x7FFF;
+            }
+            
+            return buf.buffer;
+        }
+        
+        // Downsampling function to convert audio from browser sample rate to target sample rate
+        function downsampleAudio(buffer, fromSampleRate, toSampleRate) {
+            if (fromSampleRate === toSampleRate) {
+              return buffer;
+            }
+            
+            const sampleRateRatio = fromSampleRate / toSampleRate;
+            const newLength = Math.round(buffer.length / sampleRateRatio);
+            const result = new Float32Array(newLength);
+            
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            
+            while (offsetResult < result.length) {
+              const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+              let accum = 0;
+              let count = 0;
+              
+              for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+                accum += buffer[i];
+                count++;
+              }
+              
+              result[offsetResult] = accum / count;
+              offsetResult++;
+              offsetBuffer = nextOffsetBuffer;
+            }
+            
+            return result;
+          }
+        
+          // Stop recording
+        function stopRecording() {
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+            
+            if (microphoneStream) {
+                microphoneStream.getTracks().forEach(track => track.stop());
+                microphoneStream = null;
+            }
+            
+            // Update UI
+            isConversationActive = false;
+            startButton.textContent = "Start Conversation";
+            startButton.classList.remove('recording');
+            microphoneIndicator.classList.remove('active');
+            updateStatus("Paused. Click 'Start Conversation' to continue.");
+        }
+        
+        // Convert audio data to format expected by Deepgram
+        function convertAudioData(audioData) {
+            // Convert Float32Array to Int16Array
+            const convertedData = new Int16Array(audioData.length);
+            for (let i = 0; i < audioData.length; i++) {
+                // Convert from [-1.0, 1.0] to [-32768, 32767]
+                const s = Math.max(-1, Math.min(1, audioData[i]));
+                convertedData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return convertedData.buffer;
+        }
+        
+        // Update status message
+        function updateStatus(message) {
+            statusElement.textContent = message;
+        }
+        
+        // Add a message to the transcript
+        function addMessageToTranscript(message) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('transcript-message');
+            messageElement.classList.add(message.speaker + '-message');
+            messageElement.textContent = message.text;
+            transcript.appendChild(messageElement);
+            
+            // Scroll to bottom
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+        
+        /**
+        * Fixed findMenuItem function implementation with default parameter
+        * @param {string} name - Item name
+        * @param {Object} data - Restaurant data, defaults to window.restaurantData
+        * @returns {Object|null} - Menu item object or null if not found
+        */
+        function findMenuItem(name, data = window.restaurantData) {
+            if (!name) return null;
+            if (!data || !data.menu) return null;
+            
+            const searchName = name.toLowerCase();
+            
+            // Search in each menu category
+            for (const category of ['pizzas', 'sides', 'drinks', 'desserts']) {
+                const items = data.menu[category];
+                if (!items) continue;
+                
+                const found = items.find(item => item.name.toLowerCase() === searchName);
+                if (found) return found;
+            }
+            
+            // Check for alternative names
+            if (data.menuKeywords) {
+                for (const [keyword, variants] of Object.entries(data.menuKeywords)) {
+                    if (keyword.toLowerCase() === searchName) {
+                        const id = variants[0];
+                        
+                        // Search for item by ID
+                        for (const category of ['pizzas', 'sides', 'drinks', 'desserts']) {
+                            const items = data.menu[category];
+                            if (!items) continue;
+                            
+                            const found = items.find(item => item.id === id);
+                            if (found) return found;
+                        }
+                    }
+                }
+            }
+            
+            return null;
+        }
+        
+        // Initialize
+        connectToServer();
+        updateCartUI();
+    </script>
+</body>
+</html>
