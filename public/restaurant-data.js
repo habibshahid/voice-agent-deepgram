@@ -101,7 +101,7 @@ window.restaurantData = {
     delivery: {
         minimum: 15.00,
         fee: 3.99,
-        estimatedTime: "30-45 minutes",
+        estimatedTime: "thirty to fourty five minutes",
         radiusInMiles: 5
     }
 };

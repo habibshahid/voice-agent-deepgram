@@ -165,6 +165,48 @@ async function configureDeepgramAgent(deepgramConnection, restaurantData) {
                             type: "object",
                             properties: {}
                         }
+                    },
+                    {
+                        name: "update_customer_name",
+                        description: "Update the customer's name for the order",
+                        parameters: {
+                            type: "object",
+                            properties: {
+                                name: {
+                                    type: "string",
+                                    description: "The customer's name"
+                                }
+                            },
+                            required: ["name"]
+                        }
+                    },
+                    {
+                        name: "update_customer_phone_number",
+                        description: "Update the customer's phone number for the order",
+                        parameters: {
+                            type: "object",
+                            properties: {
+                                phone: {
+                                    type: "string",
+                                    description: "The customer's phone number"
+                                }
+                            },
+                            required: ["phone"]
+                        }
+                    },
+                    {
+                        name: "update_customer_address",
+                        description: "Update the customer's address for delivery",
+                        parameters: {
+                            type: "object",
+                            properties: {
+                                address: {
+                                    type: "string",
+                                    description: "The customer's delivery address"
+                                }
+                            },
+                            required: ["address"]
+                        }
                     }
                 ],
             },
